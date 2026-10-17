@@ -34,6 +34,9 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.math.pow
 import org.yaml.snakeyaml.Yaml
 import java.io.File
+import java.io.RandomAccessFile
+import HttpURLConnection
+import java.net.URL
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
 import java.nio.file.Path
@@ -83,6 +86,8 @@ sealed class InstallState {
     data object Idle : InstallState()
     data object ImportWarn : InstallState()
     data object CopyingToCache : InstallState()
+    /** 二改版新增：从网络下载 rootfs（APK 瘦身） */
+    data class Downloading(val downloadedBytes: Long, val totalBytes: Long) : InstallState()
     data object ExtractingConfig : InstallState()
     data class AwaitingConfirm(
         val rawConfig: Map<String, Any>,
@@ -391,6 +396,90 @@ class ContainerManageViewModel(application: Application) : AndroidViewModel(appl
                 cleanCacheFiles()
                 _installState.value = InstallState.Failed(
                     app.getString(R.string.tc4_import_builtin_failed, e.message ?: ""))
+            }
+        }
+    }
+
+    /**
+     * 二改版新增：从网络下载 rootfs.tar.zst（APK 瘦身）。
+     * 支持断点续传（Range），下载完成后走与内置导入相同的 processCachedRootfs() 流程。
+     * 界面复用现有导入进度对话框，不新增界面。
+     */
+    fun startDownloadImport(url: String = Global.ROOTFS_DOWNLOAD_URL) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val app = getApplication<Application>()
+            val cacheFile = File(app.filesDir, "rootfs.tar.zst")
+            try {
+                var downloaded = if (cacheFile.exists()) cacheFile.length() else 0L
+                var total = -1L
+
+                // 先 HEAD 拿总大小（拿不到也不致命）
+                try {
+                    (URL(url).openConnection() as HttpURLConnection).apply {
+                        requestMethod = "HEAD"
+                        connectTimeout = 15000
+                        readTimeout = 15000
+                        connect()
+                        total = contentLengthLong.takeIf { it > 0 } ?: -1L
+                        disconnect()
+                    }
+                } catch (_: Exception) { }
+
+                // 若本地已有完整文件，直接走导入流程
+                if (total > 0 && downloaded >= total) {
+                    processCachedRootfs()
+                    return@launch
+                }
+
+                _installState.value = InstallState.Downloading(downloaded, total)
+                var lastReport = System.currentTimeMillis()
+
+                (URL(url).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 30000
+                    readTimeout = 30000
+                    // 断点续传
+                    if (downloaded > 0) setRequestProperty("Range", "bytes=$downloaded-")
+                    connect()
+
+                    val code = responseCode
+                    if (code != HttpURLConnection.HTTP_OK &&
+                        code != HttpURLConnection.HTTP_PARTIAL) {
+                        throw IllegalStateException("HTTP $code")
+                    }
+                    // 服务器不支持 Range 时从头下
+                    if (code == HttpURLConnection.HTTP_OK && downloaded > 0) {
+                        downloaded = 0
+                        cacheFile.delete()
+                    }
+                    if (total <= 0) {
+                        total = contentLengthLong.takeIf { it > 0 }?.let { it + downloaded } ?: -1L
+                    }
+
+                    inputStream.use { input ->
+                        RandomAccessFile(cacheFile, "rw").use { raf ->
+                            raf.seek(downloaded)
+                            val buf = ByteArray(64 * 1024)
+                            while (true) {
+                                val n = input.read(buf)
+                                if (n < 0) break
+                                raf.write(buf, 0, n)
+                                downloaded += n
+                                val now = System.currentTimeMillis()
+                                if (now - lastReport > 500) {
+                                    lastReport = now
+                                    _installState.value = InstallState.Downloading(downloaded, total)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                _installState.value = InstallState.Downloading(downloaded, total)
+                processCachedRootfs()
+            } catch (e: Exception) {
+                // 保留已下载的部分，下次可续传；只在用户取消/彻底失败时由 cleanCacheFiles 清理
+                _installState.value = InstallState.Failed(
+                    app.getString(R.string.tc4_import_download_failed, e.message ?: ""))
             }
         }
     }

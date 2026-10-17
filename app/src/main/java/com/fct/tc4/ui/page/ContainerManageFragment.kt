@@ -262,7 +262,12 @@ class ContainerManageFragment : Fragment() {
                                 if (bundle.getBoolean("confirmed")) {
                                     filePickerLauncher.launch(arrayOf("application/octet-stream", "*/*"))
                                 } else if (bundle.getBoolean(ConfirmDialogFragment.KEY_NEUTRAL, false)) {
-                                    viewModel.startBuiltInImport()
+                                    // 二改版：无内置镜像时中性按钮改为下载，有内置时走内置安装
+                                    if (Global.hasBuiltInRootfs()) {
+                                        viewModel.startBuiltInImport()
+                                    } else {
+                                        viewModel.startDownloadImport()
+                                    }
                                 } else {
                                     viewModel.resetInstallState()
                                 }
@@ -274,8 +279,28 @@ class ContainerManageFragment : Fragment() {
                                     message = getString(R.string.tc4_import_warning),
                                     positiveText = getString(R.string.tc4_btn_continue),
                                     negativeText = getString(R.string.tc4_btn_cancel),
-                                    neutralText = if (Global.hasBuiltInRootfs()) getString(R.string.tc4_import_builtin_btn) else null
+                                    // 二改版：无内置镜像时显示下载按钮（复用同一对话框，不新增界面）
+                                    neutralText = if (Global.hasBuiltInRootfs()) getString(R.string.tc4_import_builtin_btn) else getString(R.string.tc4_import_download_btn)
                                 )
+                            }
+                        }
+                        is InstallState.Downloading -> {
+                            // 二改版新增：下载进度复用现有进度对话框
+                            val tag = "install_copy_progress"
+                            val d = childFragmentManager.findFragmentByTag(tag) as? ProgressDialogFragment
+                            val pct = if (state.totalBytes > 0)
+                                (state.downloadedBytes * 100 / state.totalBytes).toInt() else -1
+                            val title = if (pct >= 0)
+                                "${getString(R.string.tc4_import_downloading_title)} $pct%"
+                            else
+                                getString(R.string.tc4_import_downloading_title)
+                            if (d == null) {
+                                ProgressDialogFragment
+                                    .newBuilder(childFragmentManager)
+                                    .title(title)
+                                    .show(tag)
+                            } else {
+                                d.updateTitle(title)
                             }
                         }
                         is InstallState.CopyingToCache -> {

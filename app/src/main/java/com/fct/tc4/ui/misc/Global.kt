@@ -38,6 +38,14 @@ import java.io.File
 
 object Global {
     /**
+     * 二改版新增（APK 瘦身）：rootfs 镜像下载地址。
+     * APK 不再内置 1GB 镜像，首次启动时从这里下载。
+     * 镜像发布在 GitHub Releases，也可换成自建镜像站（如 https://yousj.cc/vm/）。
+     */
+    const val ROOTFS_DOWNLOAD_URL =
+        "https://github.com/iill392/youlong-tiny_container/releases/latest/download/rootfs.tar.zst"
+
+    /**
      * auto_launch = "xfce"
      * installed_containers = ["xfce", "lxqt", ...]
      *

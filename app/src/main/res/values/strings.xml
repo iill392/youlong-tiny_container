@@ -54,6 +54,11 @@
     <string name="tc4_import_title">Import Container</string>
     <string name="tc4_import_warning">1. Only import containers from trusted sources.\nA malicious container can destroy other containers and even the app itself.\nIf you grant storage permission, it can also modify, send, or delete important data on your device (e.g. photos).\n\n2. Disclaimer: This software is open source under GPL, provided WITHOUT ANY WARRANTY.\nThe author assumes no liability under any circumstances.\nUsers must review the source code and assume all risks.</string>
     <string name="tc4_import_builtin_btn">Install Built-in Container</string>
+    <!-- 二改版新增（APK 瘦身）：下载相关文案 -->
+    <string name="tc4_import_download_btn">Download Container Image</string>
+    <string name="tc4_import_downloading_title">Downloading container image…</string>
+    <string name="tc4_import_download_failed">Download failed: %1$s</string>
+    <string name="tc4_import_download_confirm">The container image (~1 GB) will be downloaded on first launch. Continue?</string>
     <string name="tc4_import_copying_title">Copying container files to cache…</string>
     <string name="tc4_import_extracting_title">Extracting configuration…</string>
     <string name="tc4_import_installing_title">Installing container…</string>
